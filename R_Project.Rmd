@@ -1,0 +1,170 @@
+---
+title: 2019 COVID-19 Data Exploration
+output: html_document
+date: "2023-02-01"
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Analysis of COVID-19 Data from 2019
+
+This data shows COVID-19 describes traits of individual infections of
+COVID-19 recorded in 2019 around the world. This dataset can be found
+[here](https://www.kaggle.com/datasets/sudalairajkumar/novel-corona-virus-2019-dataset/versions/25)
+
+#### Import CSV and necessary packages:
+
+```{r}
+data <- read.csv("~/Desktop/COVID_R_Project/COVID19_line_list_data.csv")
+```
+
+```{r}
+#import libraries
+library(Hmisc)
+library(dplyr)
+```
+
+#### Initial exploration of the data:
+
+```{r}
+#head(data)
+```
+
+The colnames() function shows all of the types of values in this
+dataset. The describe() function shows values where there is missing
+data.
+
+```{r}
+colnames(data)
+```
+
+```{r}
+#see where there are potentially missing values
+#describe(data) 
+
+```
+
+#### Adjusting for missing/erroneous data:
+
+Most deaths are measured with 0, indicating survival, or 1, indicating
+death. Adjusting for death column with death listed as date, not 1
+integer:
+
+```{r}
+data$death_new <- as.integer(data$death !=0)
+#if death listed as a date, corrected to death =1
+unique(data$death_new) #check for only two unique values, 0 and 1 
+```
+
+### Calculating Death Rates:
+
+With new adjusted death data, we can calculate a death rate from this
+dataset is as follows:
+
+```{r}
+(sum(data$death_new)/1085) #1085 from above # of obs
+```
+
+In 2019, the global death rate was 5.8%
+
+#### Now looking at death rate by country:
+
+First, establishing the total case count by country:
+
+```{r}
+total_case <- data.frame(with(unique(data[c("id", "country")]), table(country)))
+total_case<- total_case[order(total_case$Freq, decreasing = TRUE),]
+total_case
+```
+
+Then, establishing total death count by country
+
+```{r}
+data2 <-summarise_at(group_by(data,country), vars(death_new), funs(sum(.,na.rm=TRUE)))
+total_death <-data2[order(data2$death_new, decreasing = TRUE),]
+total_death
+```
+
+```{r}
+country_total<- merge(total_case, total_death, by = 'country')
+country_total <-country_total[order(country_total$Freq, decreasing = TRUE),]
+country_total
+```
+
+Is this data logical? The low death totals and rates outside of East
+Asia in late 2019 are consistent with the known timeline of COVID-19
+spread and awareness according to the
+[CDC](https://www.cdc.gov/museum/timeline/covid19.html).
+
+We can calculate death rates for all countries:
+
+```{r}
+country_total$death_rate<-country_total$death_new/country_total$Freq
+country_total
+#order based on frequency:
+country_total <-country_total[order(country_total$Freq, decreasing = TRUE),]
+country_total
+#exclude countries with non-zero death rates:
+country_total <-country_total %>%
+  filter(if_all(country:death_new, ~ !.x  %in% 0))
+```
+
+Logically, it makes sense that China would have the highest case count
+while the higher death rates in Iran and the Phillipines should be
+looked at within the context of much lower case counts.
+
+### Death rate related to age and gender
+
+First we can calculate the mean age of the surviving population and not
+surviving population:
+
+```{r}
+died = subset(data, death_new ==1 )
+alive = subset(data, death_new ==0)
+```
+
+```{r}
+#create subsets of died and alive populations
+#mean(died$age) #there are missing age values in the dataset, so we need to correct for those to be ignored by R 
+
+round(mean(died$age, na.rm = TRUE), digits = 1)
+round(mean(alive$age, na.rm = TRUE), digits =1)
+```
+
+Is this statistically significant? We can assess with t-test
+
+```{r}
+t.test(died$age, alive$age, alternative = 'two.sided', conf.level = 0.95)
+```
+
+Therefore, there is a 95% chance the difference in age between the
+surviving group and the died group is between 16.74 and 24.29. So our
+results are statistically significant. Our p-value 2.2 e-16 \<0.05 so we
+can reject the null hypothesis.
+
+#### We can similarly assess for gender:
+
+```{r}
+men = subset(data, gender =='male' )
+women = subset(data, gender =='female')
+```
+
+```{r}
+#create subsets of male and female populations
+#mean(died$age) #there are missing age values in the dataset, so we need to correct for those to be ignored by R 
+
+round(mean(men$death_new, na.rm = TRUE), digits = 4) 
+round(mean(women$death_new, na.rm = TRUE), digits =4)
+```
+
+So we see a death rate of 8.5% for men, and 3.7% for women. Is this
+significant?
+
+```{r}
+t.test(men$death_new, women$death_new, alternative = 'two.sided', conf.level = 0.95)
+```
+
+We can say with 95% confidence that men have a 1.7% to 7.9% higher death
+rate than women. Our p-value is 0.002 \<0.05 so we can reject the null
+hypothesis.
